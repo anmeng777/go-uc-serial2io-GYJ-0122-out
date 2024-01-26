@@ -30,14 +30,14 @@ func (spw *SerialPortWrapper) OpenPort() error {
 }
 
 // SendData 发送数据
-func (spw *SerialPortWrapper) SendData(rsctl byte, ctl byte, date byte) ([]byte, error) {
+func (spw *SerialPortWrapper) SendData(sendData []byte) ([]byte, error) {
 	if spw.Port == nil {
 		err := spw.OpenPort()
 		if err != nil {
 			return nil, err
 		}
 	}
-	return SendAndReceiveData(spw.Port, rsctl, ctl, date, spw.Timeout)
+	return SendAndReceiveData(spw.Port, sendData, spw.Timeout)
 }
 
 // OpenSerialPort 打开串口
@@ -61,8 +61,8 @@ func OpenSerialPort(portName string, baudRate uint, dataBits uint, stopBits uint
 }
 
 // SendAndReceiveData 发送和接收数据
-func SendAndReceiveData(port io.ReadWriteCloser, rsctl byte, ctl byte, date byte, timeout time.Duration) ([]byte, error) {
-	sendData := []byte{0x3c, rsctl, ctl, date, 0x3e}
+func SendAndReceiveData(port io.ReadWriteCloser, sendData []byte, timeout time.Duration) ([]byte, error) {
+	//sendData := []byte{0x3c, rsctl, ctl, date, 0x3e}
 	// 接收数据
 	buf := make([]byte, 128)
 
