@@ -40,7 +40,11 @@ func (uw *UnpackWrapper) Unpack(buf []byte) (int, *Packet, error) {
 	packet := &Packet{}
 	headerBytes := make([]byte, len(uw.PacketHeader))
 	for i := 0; i < len(uw.PacketHeader); i++ {
-		headerBytes[i] = buf[i]
+		value, err := safeAccess(buf, i)
+		if err != nil {
+			return 0, nil, fmt.Errorf("index out of array")
+		}
+		headerBytes[i] = value
 	}
 	packet.Header = headerBytes
 	if !bytes.Equal(packet.Header, uw.PacketHeader) {
@@ -50,7 +54,11 @@ func (uw *UnpackWrapper) Unpack(buf []byte) (int, *Packet, error) {
 	}
 	lengthBytes := make([]byte, uw.LengthSize)
 	for i := 0; i < uw.LengthSize; i++ {
-		lengthBytes[i] = buf[len(uw.PacketHeader)+i]
+		value, err := safeAccess(buf, len(uw.PacketHeader)+i)
+		if err != nil {
+			return 0, nil, fmt.Errorf("index out of array")
+		}
+		lengthBytes[i] = value
 	}
 	packet.Length = binary.LittleEndian.Uint32(lengthBytes)
 	if packet.Length > 100 {
@@ -58,7 +66,12 @@ func (uw *UnpackWrapper) Unpack(buf []byte) (int, *Packet, error) {
 		//buf = buf[1:]
 		return -1, nil, fmt.Errorf("invalid packet length")
 	}
-	packet.Command = buf[len(uw.PacketHeader)+uw.LengthSize]
+
+	value, err := safeAccess(buf, len(uw.PacketHeader)+uw.LengthSize)
+	if err != nil {
+		return 0, nil, fmt.Errorf("index out of array")
+	}
+	packet.Command = value
 
 	if len(buf) < len(uw.PacketHeader)+uw.LengthSize+int(packet.Length)+len(uw.PacketTail) {
 		return 0, nil, fmt.Errorf("invalid packet length")
@@ -66,13 +79,21 @@ func (uw *UnpackWrapper) Unpack(buf []byte) (int, *Packet, error) {
 
 	packet.Data = make([]byte, packet.Length)
 	for i := uint32(0); i < packet.Length; i++ {
-		packet.Data[i] = buf[len(uw.PacketHeader)+uw.LengthSize+1+int(i)]
+		value, err := safeAccess(buf, len(uw.PacketHeader)+uw.LengthSize+1+int(i))
+		if err != nil {
+			return 0, nil, fmt.Errorf("index out of array")
+		}
+		packet.Data[i] = value
 	}
 
 	// Read and check tail
 	packet.Tail = make([]byte, len(uw.PacketTail))
 	for i := 0; i < len(uw.PacketTail); i++ {
-		packet.Tail[i] = buf[len(uw.PacketHeader)+uw.LengthSize+1+int(packet.Length)+i]
+		value, err := safeAccess(buf, len(uw.PacketHeader)+uw.LengthSize+1+int(packet.Length)+i)
+		if err != nil {
+			return 0, nil, fmt.Errorf("index out of array")
+		}
+		packet.Tail[i] = value
 	}
 
 	if !bytes.Equal(packet.Tail, uw.PacketTail) {
@@ -196,4 +217,11 @@ func FrameNumberGenerator(startIndex byte, endIndex byte) func() byte {
 		current++
 		return result
 	}
+}
+
+func safeAccess(slice []byte, index int) (byte, error) {
+	if index < 0 || index >= len(slice) {
+		return 0, fmt.Errorf("index out of bounds")
+	}
+	return slice[index], nil
 }

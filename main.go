@@ -13,7 +13,7 @@ const (
 
 func main() {
 	spw := &GYJ_0122.SerialPortWrapper{
-		PortName:        "COM2",
+		PortName:        "COM1",
 		BaudRate:        9600,
 		DataBits:        8,
 		StopBits:        1,
