@@ -7,13 +7,13 @@ import (
 )
 
 const (
-	HelpSignal = 0x07
+	HelpSignal = 0x30
 	TalkStart  = 0x0E
 )
 
 func main() {
 	spw := &GYJ_0122.SerialPortWrapper{
-		PortName:        "COM1",
+		PortName:        "COM3",
 		BaudRate:        9600,
 		DataBits:        8,
 		StopBits:        1,
@@ -21,9 +21,14 @@ func main() {
 		Timeout:         300 * time.Millisecond,
 	}
 	uw := &GYJ_0122.UnpackWrapper{
-		PacketHeader: []byte{0xFF, 0x00, 0xAA, 0x55},
-		LengthSize:   4,
+		PacketHeader: []byte{0x3c},
+		LengthIndex:  0,
+		LengthSize:   0,
+		CommandIndex: 2,
 		CommandSize:  1,
+		DataIndex:    3,
+		DataSize:     4,
+		PacketTail:   []byte{0x3e},
 	}
 	MinimumPacket := len(uw.PacketHeader) + uw.LengthSize + uw.CommandSize + len(uw.PacketTail)
 
@@ -53,11 +58,9 @@ func main() {
 				continue
 			}
 
-			switch packet.Command {
+			switch packet.Command[0] {
 			case HelpSignal:
 				log.Printf("Received help signal %v", packet.Data)
-			case TalkStart:
-				log.Println("Talk start")
 			default:
 				log.Printf("Unknown command: %x", packet.Command)
 			}

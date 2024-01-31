@@ -22,86 +22,106 @@ type SerialPortWrapper struct {
 }
 
 type Packet struct {
-	Header  []byte
-	Length  uint32
-	Command byte
+	Header []byte
+	// 数据长度
+	Length  uint16
+	Command []byte
 	Data    []byte
 	Tail    []byte
 }
 
 type UnpackWrapper struct {
+	// 数据包头
 	PacketHeader []byte
-	LengthSize   int
-	CommandSize  int
-	PacketTail   []byte
+	// 数据包长度在数据包中的位置，0表示数据包长度依据DataSize指定的字节数
+	LengthIndex int
+	// 数据包长度的字节数，0表示数据包长度依据DataSize指定的字节数
+	LengthSize int
+	// 命令码在数据包中的位置
+	CommandIndex int
+	// 命令码的字节数
+	CommandSize int
+	// 数据包数据在数据包中的位置
+	DataIndex int
+	// 数据包数据的字节数, 0表示数据包长度依据LengthSize指定的字节数
+	DataSize int
+	// 数据包尾
+	PacketTail []byte
 }
 
 func (uw *UnpackWrapper) Unpack(buf []byte) (int, *Packet, error) {
-	packet := &Packet{}
-	headerBytes := make([]byte, len(uw.PacketHeader))
-	for i := 0; i < len(uw.PacketHeader); i++ {
-		value, err := safeAccess(buf, i)
-		if err != nil {
-			return 0, nil, fmt.Errorf("index out of array")
-		}
-		headerBytes[i] = value
-	}
-	packet.Header = headerBytes
-	if !bytes.Equal(packet.Header, uw.PacketHeader) {
-		log.Println("Invalid packet header")
-		//buf = buf[1:]
-		return -1, nil, fmt.Errorf("invalid packet header")
-	}
-	lengthBytes := make([]byte, uw.LengthSize)
-	for i := 0; i < uw.LengthSize; i++ {
-		value, err := safeAccess(buf, len(uw.PacketHeader)+i)
-		if err != nil {
-			return 0, nil, fmt.Errorf("index out of array")
-		}
-		lengthBytes[i] = value
-	}
-	packet.Length = binary.LittleEndian.Uint32(lengthBytes)
-	if packet.Length > 100 {
-		log.Println("Invalid packet length")
-		//buf = buf[1:]
-		return -1, nil, fmt.Errorf("invalid packet length")
-	}
 
-	value, err := safeAccess(buf, len(uw.PacketHeader)+uw.LengthSize)
-	if err != nil {
-		return 0, nil, fmt.Errorf("index out of array")
-	}
-	packet.Command = value
-
-	if len(buf) < len(uw.PacketHeader)+uw.LengthSize+int(packet.Length)+len(uw.PacketTail) {
+	if len(buf) < len(uw.PacketHeader)+uw.LengthSize+uw.CommandSize+len(uw.PacketTail) {
 		return 0, nil, fmt.Errorf("invalid packet length")
 	}
 
-	packet.Data = make([]byte, packet.Length)
-	for i := uint32(0); i < packet.Length; i++ {
-		value, err := safeAccess(buf, len(uw.PacketHeader)+uw.LengthSize+1+int(i))
+	packet := &Packet{}
+
+	// 包头
+	//headerBytes := make([]byte, len(uw.PacketHeader))
+	headerBytes, err := safeAccessBytes(buf, 0, len(uw.PacketHeader))
+	if err != nil {
+		return 0, nil, fmt.Errorf("index out of array")
+	}
+	if !bytes.Equal(headerBytes, uw.PacketHeader) {
+		//log.Println("Invalid packet header111")
+		//buf = buf[1:]
+		return -1, nil, fmt.Errorf("invalid packet header")
+	}
+	packet.Header = headerBytes
+
+	// 数据长度
+	if uw.LengthIndex > 0 && uw.LengthSize > 0 {
+		lengthBytes, err := safeAccessBytes(buf, uw.LengthIndex, uw.LengthSize)
 		if err != nil {
 			return 0, nil, fmt.Errorf("index out of array")
 		}
-		packet.Data[i] = value
+		dataLength := binary.LittleEndian.Uint16(lengthBytes)
+		if dataLength > 100 {
+			log.Println("Invalid packet length")
+			//buf = buf[1:]
+			return -1, nil, fmt.Errorf("invalid packet length")
+		}
+		packet.Length = dataLength
+		if len(buf) < len(uw.PacketHeader)+uw.LengthSize+uw.CommandSize+int(packet.Length)+len(uw.PacketTail) {
+			return 0, nil, fmt.Errorf("invalid packet length")
+		}
 	}
 
-	// Read and check tail
-	packet.Tail = make([]byte, len(uw.PacketTail))
-	for i := 0; i < len(uw.PacketTail); i++ {
-		value, err := safeAccess(buf, len(uw.PacketHeader)+uw.LengthSize+1+int(packet.Length)+i)
+	// 命令码
+	commandBytes, err := safeAccessBytes(buf, uw.CommandIndex, uw.CommandSize)
+	if err != nil {
+		return 0, nil, fmt.Errorf("index out of array")
+	}
+	packet.Command = commandBytes
+
+	// 数据
+	if packet.Length > 0 {
+		dataBytes, err := safeAccessBytes(buf, uw.DataIndex, int(packet.Length))
 		if err != nil {
 			return 0, nil, fmt.Errorf("index out of array")
 		}
-		packet.Tail[i] = value
+		packet.Data = dataBytes
+	} else {
+		dataBytes, err := safeAccessBytes(buf, uw.DataIndex, uw.DataSize)
+		if err != nil {
+			return 0, nil, fmt.Errorf("index out of array")
+		}
+		packet.Data = dataBytes
 	}
 
-	if !bytes.Equal(packet.Tail, uw.PacketTail) {
+	// 包尾
+	tailBytes, err := safeAccessBytes(buf, uw.DataIndex+len(packet.Data), len(uw.PacketTail))
+	if err != nil {
+		return 0, nil, fmt.Errorf("index out of array")
+	}
+	if !bytes.Equal(tailBytes, uw.PacketTail) {
 		//if packet.Tail[0] != 0x3C || packet.Tail[1] != 0x3E {
 		log.Println("Invalid packet tail")
 		//buf = buf[1:]
 		return -1, nil, fmt.Errorf("invalid packet tail")
 	}
+	packet.Tail = tailBytes
 
 	return 1, packet, nil
 }
@@ -224,4 +244,14 @@ func safeAccess(slice []byte, index int) (byte, error) {
 		return 0, fmt.Errorf("index out of bounds")
 	}
 	return slice[index], nil
+}
+
+func safeAccessBytes(slice []byte, index int, length int) ([]byte, error) {
+	if index < 0 || index >= len(slice) {
+		return nil, fmt.Errorf("index out of bounds")
+	}
+	if index+length > len(slice) {
+		return nil, fmt.Errorf("index out of bounds")
+	}
+	return slice[index : index+length], nil
 }
