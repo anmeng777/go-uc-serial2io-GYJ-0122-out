@@ -61,7 +61,7 @@ func (uw *UnpackWrapper) Unpack(buf []byte) (int, *Packet, error) {
 	//headerBytes := make([]byte, len(uw.PacketHeader))
 	headerBytes, err := safeAccessBytes(buf, 0, len(uw.PacketHeader))
 	if err != nil {
-		return 0, nil, fmt.Errorf("index out of array")
+		return 0, nil, fmt.Errorf("index out of array1")
 	}
 	if !bytes.Equal(headerBytes, uw.PacketHeader) {
 		//log.Println("Invalid packet header111")
@@ -70,11 +70,17 @@ func (uw *UnpackWrapper) Unpack(buf []byte) (int, *Packet, error) {
 	}
 	packet.Header = headerBytes
 
+	// 包尾
+	tailIndex := bytes.Index(buf, uw.PacketTail)
+	if tailIndex < 0 {
+		return 0, nil, fmt.Errorf("cannot find packet tail")
+	}
+
 	// 数据长度
 	if uw.LengthIndex > 0 && uw.LengthSize > 0 {
 		lengthBytes, err := safeAccessBytes(buf, uw.LengthIndex, uw.LengthSize)
 		if err != nil {
-			return 0, nil, fmt.Errorf("index out of array")
+			return 0, nil, fmt.Errorf("index out of array2")
 		}
 		dataLength := binary.LittleEndian.Uint16(lengthBytes)
 		if dataLength > 100 {
@@ -91,33 +97,40 @@ func (uw *UnpackWrapper) Unpack(buf []byte) (int, *Packet, error) {
 	// 命令码
 	commandBytes, err := safeAccessBytes(buf, uw.CommandIndex, uw.CommandSize)
 	if err != nil {
-		return 0, nil, fmt.Errorf("index out of array")
+		return 0, nil, fmt.Errorf("index out of array3")
 	}
 	packet.Command = commandBytes
+
+	if tailIndex < len(uw.PacketHeader)+uw.LengthSize+uw.CommandSize+uw.DataSize+len(uw.PacketTail) {
+		return 1, packet, nil
+	}
 
 	// 数据
 	if packet.Length > 0 {
 		dataBytes, err := safeAccessBytes(buf, uw.DataIndex, int(packet.Length))
 		if err != nil {
-			return 0, nil, fmt.Errorf("index out of array")
+			return 0, nil, fmt.Errorf("index out of array4")
 		}
 		packet.Data = dataBytes
 	} else {
 		dataBytes, err := safeAccessBytes(buf, uw.DataIndex, uw.DataSize)
 		if err != nil {
-			return 0, nil, fmt.Errorf("index out of array")
+			return 0, nil, fmt.Errorf("index out of array5")
 		}
 		packet.Data = dataBytes
 	}
 
 	// 包尾
+	if tailIndex != uw.DataIndex+len(packet.Data) {
+		return 1, packet, nil
+	}
 	tailBytes, err := safeAccessBytes(buf, uw.DataIndex+len(packet.Data), len(uw.PacketTail))
 	if err != nil {
-		return 0, nil, fmt.Errorf("index out of array")
+		return 0, nil, fmt.Errorf("index out of array6")
 	}
 	if !bytes.Equal(tailBytes, uw.PacketTail) {
 		//if packet.Tail[0] != 0x3C || packet.Tail[1] != 0x3E {
-		log.Println("Invalid packet tail")
+		//log.Println("Invalid packet tail")
 		//buf = buf[1:]
 		return -1, nil, fmt.Errorf("invalid packet tail")
 	}
